@@ -1,7 +1,7 @@
 // @copyright 2012+ Daniel Nakov / Silverline CRM
 // http://silverlinecrm.com
-
 var sfnav = (function() {
+  var words;
   var outp;
   var oldins;
   var posi = -1;
@@ -13,14 +13,15 @@ var sfnav = (function() {
   var input;
   var key;
   var metaData = {};
-  var serverInstance = getServerInstance();
+  var serverInstance = '';
+  var baseUrl = '';
   var cmds = {};
   var isCtrl = false;
   var clientId, omnomnom, hash;
   var loaded=false;
   var shortcut;
   var sid;
-  var SFAPI_VERSION = 'v33.0';
+  var SFAPI_VERSION = 'v39.0';
   var ftClient;
   var customObjects = {};
   var META_DATATYPES = {
@@ -382,7 +383,7 @@ var sfnav = (function() {
     if(typeof outp != 'undefined')
       {
         while (outp.hasChildNodes()){
-          noten=outp.firstChild;
+          var noten=outp.firstChild;
           outp.removeChild(noten);
         }
       }
@@ -454,6 +455,9 @@ var sfnav = (function() {
   }
 
   function invokeCommand(cmd, newtab, event) {
+    console.log('cmd: ',cmd);
+    console.log('newtab: ',newtab);
+    console.log('event: ',event);
     if(event != 'click' && typeof cmds[cmd] != 'undefined' && (cmds[cmd].url != null || cmds[cmd].url == ''))
       {
         if(newtab)
@@ -813,14 +817,15 @@ var sfnav = (function() {
     if(location.origin.indexOf("visual.force") !== -1) return;
 
     sid = "Bearer " + getCookie('sid');
-    var theurl = getServerInstance() + '/services/data/' + SFAPI_VERSION + '/sobjects/';
-
+    var theurl = serverInstance + '/services/data/' + SFAPI_VERSION + '/sobjects/';
+    console.log('theurl: ',theurl);
     cmds['Refresh Metadata'] = {};
     cmds['Setup'] = {};
     var req = new XMLHttpRequest();
     req.open("GET", theurl, true);
     req.setRequestHeader("Authorization", sid);
     req.onload = function(response) {
+      console.log('response ', response);
       getMetadata(response.target.responseText);
 
     }
@@ -920,32 +925,6 @@ var sfnav = (function() {
             return unescape(y);
           }
       }
-  }
-  function getServerInstance()
-  {
-    var url = location.origin + "";
-    var urlParseArray = url.split(".");
-    var i;
-    var returnUrl;
-
-    if(url.indexOf("salesforce") != -1)
-      {
-        returnUrl = url.substring(0, url.indexOf("salesforce")) + "salesforce.com";
-        return returnUrl;
-      }
-
-    if(url.indexOf("cloudforce") != -1)
-      {
-        returnUrl = url.substring(0, url.indexOf("cloudforce")) + "cloudforce.com";
-        return returnUrl;
-      }
-
-    if(url.indexOf("visual.force") != -1)
-      {
-        returnUrl = 'https://' + urlParseArray[1] + '';
-        return returnUrl;
-      }
-    return returnUrl;
   }
 
   function initShortcuts() {
@@ -1106,59 +1085,46 @@ var sfnav = (function() {
   function init()
   {
     ftClient = new forceTooling.Client();
-    ftClient.setSessionToken(getCookie('sid'), SFAPI_VERSION, serverInstance + '');
+    omnomnom = getCookie('sid');
+    var orgId = omnomnom.split('!')[0];
+    chrome.runtime.sendMessage({message: "getSession", orgId: orgId}, function(message) {
+      console.log(message);
+      serverInstance = 'https://'+message.hostname;
+      console.log('serverInstance: ',serverInstance);
+      ftClient.setSessionToken(omnomnom, SFAPI_VERSION, serverInstance + '');
 
-    var div = document.createElement('div');
-    div.setAttribute('id', 'sfnav_search_box');
-    var loaderURL = chrome.extension.getURL("images/ajax-loader.gif");
-    var logoURL = chrome.extension.getURL("images/128.png");
-    div.innerHTML = `
-    <div class="sfnav_wrapper">
+      var div = document.createElement('div');
+      div.setAttribute('id', 'sfnav_search_box');
+      var loaderURL = chrome.extension.getURL("images/ajax-loader.gif");
+      var logoURL = chrome.extension.getURL("images/128.png");
+      div.innerHTML = `
+      <div class="sfnav_wrapper">
       <input type="text" id="sfnav_quickSearch" autocomplete="off"/>
       <img id="sfnav_loader" src= "${loaderURL}"/>
       <img id="sfnav_logo" src= "${logoURL}"/>
-    </div>
-    <div class="sfnav_shadow" id="sfnav_shadow"/>
-    <div class="sfnav_output" id="sfnav_output"/>`;
+      </div>
+      <div class="sfnav_shadow" id="sfnav_shadow"/>
+      <div class="sfnav_output" id="sfnav_output"/>`;
 
-    document.body.appendChild(div);
-    outp = document.getElementById("sfnav_output");
-    hideLoadingIndicator();
-    initShortcuts();
+      document.body.appendChild(div);
+      outp = document.getElementById("sfnav_output");
+      hideLoadingIndicator();
+      initShortcuts();
 
-    omnomnom = getCookie('sid');
-
-    clientId = omnomnom.split('!')[0];
-
-    hash = clientId + '!' + omnomnom.substring(omnomnom.length - 10, omnomnom.length);
-    // chrome.storage.local.get(['Commands','Metadata'], function(results) {
-    //     console.log(results);
-    // });
-
-
-    chrome.extension.sendMessage({
-      action:'Get Commands', 'key': hash},
-      function(response) {
-        cmds = response;
-        if(cmds == null || cmds.length == 0) {
-          cmds = {};
-          metaData = {};
-          getAllObjectMetadata();
-        } else {
-        }
-      });
-
-    // chrome.extension.sendMessage({action:'Get Metadata', 'key': hash},
-    //   function(response) {
-    //     metaData = response;
-    // });
-
-
-
+      chrome.extension.sendMessage({
+        action:'Get Commands', 'key': omnomnom},
+        function(response) {
+          cmds = response;
+          if(cmds == null || cmds.length == 0) {
+            cmds = {};
+            metaData = {};
+            getAllObjectMetadata();
+          } else {
+          }
+        });
+    });
 
   }
-
-  if(serverInstance == null || getCookie('sid') == null || getCookie('sid').split('!').length != 2) return;
-  else init();
+  init();
 
 })();
